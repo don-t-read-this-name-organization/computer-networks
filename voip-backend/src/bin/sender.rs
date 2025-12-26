@@ -1,6 +1,6 @@
 use cpal::default_host;
 use tokio::signal::ctrl_c;
-use voip_backend::{io::input_stream_fn, networking::send_task};
+use voip_backend::{io::input_stream_fn, networking::send_task, web::web_task};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,6 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("send task error: {}", e);
         }
     });
+    tokio::spawn(web_task());
     ctrl_c().await?;
     Ok(())
 }

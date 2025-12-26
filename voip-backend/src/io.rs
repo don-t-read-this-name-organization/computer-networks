@@ -1,16 +1,59 @@
-use std::error::Error;
 use std::sync::atomic::{AtomicU16, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
 
 use crate::jitter::JitterBuffer;
 use crate::packet::AudioPacket;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Host, Stream, StreamError};
+use cpal::{Device, Host, Stream, StreamError};
 use tokio::sync::mpsc::Sender;
 
-pub fn input_stream_fn(host: Host, channel: Sender<Vec<u8>>) -> Result<Stream, Box<dyn Error>> {
-    let input_device = host.default_input_device().expect("No input device");
-    let input_config = input_device.default_input_config()?;
+struct AudioState {
+    host: Host,
+    input: Option<Stream>,
+    output: Option<Stream>,
+}
+
+impl AudioState {
+    pub fn new(host: Host) -> Self {
+        Self {
+            host,
+            input: None,
+            output: None,
+        }
+    }
+
+    pub fn start(
+        &mut self,
+        input_channel: Sender<Vec<u8>>,
+        output_jitter: Arc<Mutex<JitterBuffer>>,
+    ) {
+        let input_device = self.host.default_input_device().expect("No input device");
+        let output_device = self.host.default_output_device().expect("No output device");
+        self.input = input_stream_fn(input_device, input_channel).unwrap_or(None);
+        self.output = output_stream_fn(output_device, output_jitter).unwrap_or(None);
+        if self.input.is_none() || self.output.is_none() {
+            self.clear();
+            eprintln!("Failed to create streams");
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.input = None;
+        self.output = None;
+    }
+}
+
+pub fn input_stream_fn(
+    input_device: Device,
+    channel: Sender<Vec<u8>>,
+) -> Result<Option<Stream>, ()> {
+    let input_config = match input_device.default_input_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("input config error: {}", e);
+            return Err(());
+        }
+    };
 
     println!("Input config: {:?}", input_config);
 
@@ -33,22 +76,34 @@ pub fn input_stream_fn(host: Host, channel: Sender<Vec<u8>>) -> Result<Stream, B
             },
             err_fn,
             None,
-        )?,
+        ),
         _ => panic!("Unsupported format"),
     };
 
-    stream.play()?;
-    println!("Sending audio...");
-    Ok(stream)
+    match stream {
+        Ok(s) => {
+            s.play().unwrap_or_default();
+            println!("Sending audio...");
+            Ok(Some(s))
+        }
+        Err(e) => {
+            eprintln!("Input stream error: {}", e);
+            Err(())
+        }
+    }
 }
 
 pub fn output_stream_fn(
-    host: Host,
+    output_device: Device,
     buffer: Arc<Mutex<JitterBuffer>>,
-) -> Result<Stream, Box<dyn Error>> {
-    let output_device = host.default_output_device().expect("No output device");
-    let output_config = output_device.default_output_config()?;
-
+) -> Result<Option<Stream>, ()> {
+    let output_config = match output_device.default_input_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("output config error: {}", e);
+            return Err(());
+        }
+    };
     println!("Output config: {:?}", output_config);
 
     let stream = match output_config.sample_format() {
@@ -63,13 +118,21 @@ pub fn output_stream_fn(
             },
             err_fn,
             None,
-        )?,
+        ),
         _ => panic!("Unsupported format"),
     };
 
-    stream.play()?;
-    println!("Receiving audio...");
-    Ok(stream)
+    match stream {
+        Ok(s) => {
+            s.play().unwrap_or_default();
+            println!("Receiving audio...");
+            Ok(Some(s))
+        }
+        Err(e) => {
+            eprintln!("Output stream error: {}", e);
+            Err(())
+        }
+    }
 }
 
 fn err_fn(err: StreamError) {

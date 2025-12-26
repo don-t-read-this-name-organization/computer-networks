@@ -6,3 +6,8 @@ edition = "2024"
 [dependencies]
 cpal = "0.17"
 tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8.8", features = ["ws"] }
+tower-http = "0.6.8"
+tokio-tungstenite = "0.28.0"
+axum-extra = { version = "0.12.3", features = ["typed-header"] }
+tokio-util = "0.7.17"
