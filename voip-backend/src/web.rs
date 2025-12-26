@@ -12,17 +12,24 @@ use axum_extra::{
     headers::{self, UserAgent},
 };
 use tokio::{net::TcpListener, sync::mpsc::Sender};
+use tower_http::services::ServeDir;
 
 pub async fn web_task(channel: Sender<(SocketAddr, String)>) {
-    let app = Router::new().route("/", get(main_page)).route(
-        "/signal",
-        any({
-            move |ws: WebSocketUpgrade,
-                  ua: Option<TypedHeader<UserAgent>>,
-                  info: ConnectInfo<SocketAddr>| { ws_handler(ws, ua, info, channel) }
-        }),
-    );
+    let app = Router::new()
+        .route("/", get(main_page))
+        .route(
+            "/signal",
+            any({
+                move |ws: WebSocketUpgrade,
+                      ua: Option<TypedHeader<UserAgent>>,
+                      info: ConnectInfo<SocketAddr>| {
+                    ws_handler(ws, ua, info, channel)
+                }
+            }),
+        )
+        .nest_service("/assets", ServeDir::new("assets"));
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    println!("DEBUG: Before serve");
     serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

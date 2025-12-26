@@ -5,9 +5,9 @@ use crate::jitter::JitterBuffer;
 use crate::packet::AudioPacket;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, Stream, StreamError};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::broadcast::Sender;
 
-struct AudioState {
+pub struct AudioState {
     host: Host,
     input: Option<Stream>,
     output: Option<Stream>,
@@ -72,7 +72,7 @@ pub fn input_stream_fn(
                     samples,
                 };
 
-                let _ = channel.try_send(packet.serialize());
+                let _ = channel.send(packet.serialize());
             },
             err_fn,
             None,
