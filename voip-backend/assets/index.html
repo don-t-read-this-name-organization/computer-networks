@@ -2,15 +2,362 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>Audio Call</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Simple VoIP</title>
+    <style id="theme-styles">
+        /* Will be set by JS for dark/light mode */
+    </style>
+    <style>
+        :root {
+            --primary: #5865F2;
+            --secondary: #2B2D31;
+            --tertiary: #36393F;
+            --quaternary: #4F545C;
+            --white: #FFFFFF;
+            --gray: #72767D;
+            --red: #ED4245;
+            --green: #3BA55D;
+            --border: #202225;
+            --shadow: rgba(0, 0, 0, 0.5);
+            --text: #000000;
+            --bg: #ffffff;
+        }
+
+        .light {
+            --secondary: #F2F3F5;
+            --tertiary: #E3E5E8;
+            --quaternary: #B9BBBE;
+            --white: #222222;
+            --gray: #747F8D;
+            --text: #1E1F22;
+            --bg: #ffffff;
+            --border: #D3D4D7;
+            --shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--tertiary);
+            color: var(--white);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .container {
+            background-color: var(--secondary);
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 680px;
+            box-shadow: 0 6px 24px var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            text-align: center;
+        }
+
+        .container.in-call {
+            border: 2px solid var(--primary);
+            box-shadow: 0 0 0 0 var(--primary);
+            animation: callBorderPulse 2s infinite;
+        }
+
+        @keyframes callBorderPulse {
+            0% { box-shadow: 0 0 0 0 rgba(88, 101, 242, 0.4); }
+            70% { box-shadow: 0 0 0 12px rgba(88, 101, 242, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(88, 101, 242, 0); }
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: var(--quaternary);
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-size: 16px;
+            transition: background 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--gray);
+        }
+
+        .theme-toggle:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: var(--white);
+        }
+
+        .welcome {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--gray);
+            margin-bottom: 16px;
+        }
+
+        .status {
+            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background-color: var(--quaternary);
+            display: inline-block;
+            margin: 12px 0;
+            transition: all 0.2s ease;
+        }
+
+        .status.connected { background-color: var(--green); color: white; }
+        .status.disconnected { background-color: var(--red); color: white; }
+        .status.calling { background-color: var(--primary); color: white; }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .error-message {
+            color: var(--red);
+            font-size: 13px;
+            min-height: 18px;
+            margin-top: -8px;
+        }
+
+        .local-audio {
+            margin: 16px 0;
+        }
+
+        .audio-visualizer {
+            display: flex;
+            justify-content: center;
+            gap: 3px;
+            height: 40px;
+            margin-top: 8px;
+        }
+
+        .bar {
+            width: 6px;
+            height: 4px;
+            background: var(--quaternary);
+            border-radius: 2px;
+            transition: height 0.1s ease, background 0.2s ease;
+        }
+
+        .peers-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .peers-title {
+            font-size: 14px;
+            color: var(--gray);
+            margin-bottom: 12px;
+        }
+
+        .peer {
+            background: var(--tertiary);
+            border-radius: 10px;
+            padding: 12px;
+            margin: 8px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .peer-ip {
+            font-size: 13px;
+            color: var(--gray);
+            font-family: monospace;
+        }
+
+        .logs-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .logs-title {
+            font-size: 13px;
+            color: var(--gray);
+            margin-bottom: 8px;
+        }
+
+        .logs-output {
+            background: var(--tertiary);
+            border-radius: 8px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--gray);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+
+        .log-entry.peer-event {
+            color: var(--primary);
+        }
+
+        .log-entry.error {
+            color: var(--red);
+        }
+
+        .call-timer {
+            font-size: 13px;
+            color: var(--gray);
+            margin-top: 8px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            outline: none;
+            min-width: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 14px;
+        }
+
+        .btn:hover:not(.btn-disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+        }
+
+        .btn:active:not(.btn-disabled) {
+            transform: translateY(0);
+            scale: 0.98;
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-secondary { background-color: var(--quaternary); color: white; }
+        .btn-danger { background-color: var(--red); color: white; }
+        .btn-mute { background-color: var(--quaternary); color: white; }
+        .btn-mute.muted { background-color: var(--red); }
+
+        .btn-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 11px;
+            color: var(--gray);
+            line-height: 1.4;
+        }
+
+        @media (max-width: 500px) {
+            .container { padding: 24px; max-width: 95%; }
+            .btn { min-width: 90px; padding: 9px 14px; font-size: 13px; }
+            h1 { font-size: 24px; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Rust Audio Call</h1>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle dark/light mode">🌓</button>
 
-    <button onclick="connect()">Connect</button>
-    <button onclick="startCall()">Start Call</button>
-    <button onclick="endCall()">End Call</button>
+<div class="container">
+    <h1>Simple VoIP</h1>
+    <div class="welcome">
+        <strong>What is this?</strong><br>
+        This is a simple voice calling app that works over the internet — like a mini version of WhatsApp or Discord calls.<br><br>
 
-    <script src="assets/app.js"></script>
+        <strong>Why does it exist?</strong><br>
+        It was built to demonstrate how real-time voice communication works behind the scenes in computer networks.<br><br>
+
+        <strong>How does it work?</strong><br>
+        - When you click <strong>“Connect”</strong>, your browser talks to the server.<br>
+        - When you click <strong>“Start Call”</strong>, your voice is sent directly to your peer using fast UDP packets.<br>
+        - Everything happens in real time — no phone numbers, no accounts, just pure network magic!<br><br>
+
+    </div>
+
+    <div id="status" class="status disconnected" role="status">Disconnected</div>
+    <div id="errorMessage" class="error-message" role="alert" aria-live="polite"></div>
+
+    <div class="local-audio">
+        <div class="audio-visualizer" id="visualizer">
+            <!-- Bars generated by JS -->
+        </div>
+    </div>
+
+    <div id="timer" class="call-timer">Call duration: 0s</div>
+
+    <div class="button-group">
+        <button id="connectBtn" class="btn btn-secondary" aria-label="Connect to VoIP server">Connect</button>
+        <button id="startCallBtn" class="btn btn-primary" disabled aria-label="Start voice call">Start Call</button>
+        <button id="endCallBtn" class="btn btn-danger" disabled aria-label="End current call">End Call</button>
+        <button id="muteBtn" class="btn btn-mute" disabled aria-label="Mute/unmute your microphone">🔇 Mute</button>
+    </div>
+
+    <div class="peers-section">
+        <div class="peers-title">Connected Peers</div>
+        <div id="peersList">
+            <div class="peer">
+                <div class="peer-ip">No peers connected</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="logs-section">
+        <div class="logs-title">System Logs</div>
+        <div id="logsOutput" class="logs-output" aria-live="polite"></div>
+    </div>
+
+    <div class="footer">
+        Created for the <strong>Computer Networks</strong> course by 3rd-year FILS students:<br>
+        Gladkykh Daria, Bachynskyi Roy, Huzhan Sofiia
+    </div>
+</div>
+
+<script src="/assets/app.js"></script>
 </body>
 </html>

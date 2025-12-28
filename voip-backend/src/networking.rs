@@ -7,7 +7,8 @@ use std::{
 use tokio::{
     net::UdpSocket,
     sync::{
-        broadcast::Receiver as BroadcastReceiver, broadcast::Sender as BroadcastSender,
+        broadcast::Receiver as BroadcastReceiver,
+        broadcast::Sender as BroadcastSender,
         mpsc::Receiver as SingleReceiver,
     },
     task::JoinHandle,
@@ -15,6 +16,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{io::AudioState, jitter::JitterBuffer, packet::AudioPacket};
+
+// 👇 MUTE LOGIC: shared mute state
+type PeerMuteState = Arc<Mutex<std::collections::HashMap<SocketAddr, bool>>>;
 
 struct CallHandler {
     pub cancel_token: CancellationToken,
@@ -27,9 +31,11 @@ pub async fn udp_task(
     mut control_channel: SingleReceiver<(SocketAddr, String)>,
     jitter: Arc<Mutex<JitterBuffer>>,
     audio_state: Arc<Mutex<AudioState>>,
+    peer_mute_state: PeerMuteState,
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
     let mut call_handler: Option<CallHandler> = None;
+
     loop {
         if let Some((address, msg)) = control_channel.recv().await {
             if msg.contains("start_call") {
@@ -42,8 +48,10 @@ pub async fn udp_task(
                 let send_handle = {
                     let token = cancel_token.clone();
                     let socket_send = socket.clone();
+                    let mute_state = peer_mute_state.clone();
+                    let peer_addr = address;
                     tokio::spawn(async move {
-                        let _ = send_task(socket_send, audio_rx, token).await;
+                        let _ = send_task(socket_send, audio_rx, token, mute_state, peer_addr).await;
                     })
                 };
 
@@ -61,11 +69,13 @@ pub async fn udp_task(
                     send_handle,
                     recv_handle,
                 });
+
                 let mut state = audio_state.lock().unwrap();
                 let jitter_audio = jitter.clone();
                 let input_channel = audio_channel.clone();
                 state.start(input_channel, jitter_audio);
             }
+
             if msg.contains("end_call") {
                 if let Some(call) = call_handler {
                     call.cancel_token.cancel();
@@ -84,11 +94,22 @@ pub async fn send_task(
     socket: Arc<UdpSocket>,
     mut audio_channel: BroadcastReceiver<Vec<u8>>,
     cancel_token: CancellationToken,
+    mute_state: PeerMuteState,
+    peer_addr: SocketAddr,
 ) -> Result<(), Box<dyn Error>> {
     loop {
         tokio::select! {
             Ok(msg) = audio_channel.recv() => {
-                let _ = socket.send(&msg).await;
+                // 👇 CHECK IF PEER IS MUTED
+                let is_muted = {
+                    let state = mute_state.lock().unwrap();
+                    *state.get(&peer_addr).unwrap_or(&false)
+                };
+
+                if !is_muted {
+                    let _ = socket.send(&msg).await;
+                }
+                // If muted, silently drop the packet
             }
             _ = cancel_token.cancelled() => {
                 println!("Send task cancelled");
@@ -96,7 +117,6 @@ pub async fn send_task(
             }
         }
     }
-
     Ok(())
 }
 
@@ -111,19 +131,17 @@ pub async fn receive_task(
         tokio::select! {
             recv = socket.recv_from(&mut buf) => {
                 if let Ok((size, _)) = recv {
-                     if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
-                      if let Some(prev) = last_seq {
-                          let exprected = prev.wrapping_add(1);
-                          if packet.seq != exprected {
-                              println!("Packet loss: exprected {}, got {}", exprected, packet.seq);
-                          }
-                      }
-
-                      last_seq = Some(packet.seq);
-
-                      let mut jb = jitter.lock().unwrap();
-                      jb.push_packet(&packet.samples);
-                  }
+                    if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
+                        if let Some(prev) = last_seq {
+                            let expected = prev.wrapping_add(1);
+                            if packet.seq != expected {
+                                println!("Packet loss: expected {}, got {}", expected, packet.seq);
+                            }
+                        }
+                        last_seq = Some(packet.seq);
+                        let mut jb = jitter.lock().unwrap();
+                        jb.push_packet(&packet.samples);
+                    }
                 }
             }
             _ = cancel_token.cancelled() => {
