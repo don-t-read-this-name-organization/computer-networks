@@ -23,9 +23,7 @@ type PeerState = Arc<Mutex<HashMap<SocketAddr, bool>>>;
 type LogSender = broadcast::Sender<String>;
 
 pub async fn web_task(control_tx: mpsc::Sender<(SocketAddr, String)>) {
-    // Broadcast channel for logs (sent to all connected clients)
     let (log_tx, _) = broadcast::channel::<String>(64);
-
     let peer_mute_state: PeerState = Arc::new(Mutex::new(HashMap::new()));
 
     let app = Router::new()
@@ -45,9 +43,7 @@ pub async fn web_task(control_tx: mpsc::Sender<(SocketAddr, String)>) {
         )
         .nest_service("/assets", ServeDir::new("assets"));
 
-    // 👇 Bind to all interfaces for multi-PC access
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("DEBUG: Server starting on 0.0.0.0:3000");
 
     serve(
         listener,
@@ -75,18 +71,15 @@ async fn ws_handler(
         "Unknown".to_string()
     };
 
-    // Log peer connection
     let log_msg = format!("Peer {} connected", addr);
     println!("{}", log_msg);
-    let _ = log_tx.send(log_msg.clone());
+    let _ = log_tx.send(log_msg);
 
-    // Initialize peer as unmuted
     {
         let mut state = peer_mute_state.lock().unwrap();
         state.insert(addr, false);
     }
 
-    // Notify all clients of peer list update
     let _ = log_tx.send(format!("PEER_LIST_UPDATE:{}", addr));
 
     ws.on_upgrade(move |socket| {
@@ -120,13 +113,11 @@ async fn handle_socket(
                 println!("{}", log_msg);
                 let _ = log_tx.send(log_msg);
             } else {
-                // Forward other messages (currently none)
                 let _ = tx_channel.send((who, text.to_string())).await;
             }
         }
     }
 
-    // On disconnect
     {
         let mut state = peer_mute_state.lock().unwrap();
         state.remove(&who);

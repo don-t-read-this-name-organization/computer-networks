@@ -17,7 +17,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{io::AudioState, jitter::JitterBuffer, packet::AudioPacket};
 
-// 👇 MUTE LOGIC: shared mute state
 type PeerMuteState = Arc<Mutex<std::collections::HashMap<SocketAddr, bool>>>;
 
 struct CallHandler {
@@ -100,7 +99,6 @@ pub async fn send_task(
     loop {
         tokio::select! {
             Ok(msg) = audio_channel.recv() => {
-                // 👇 CHECK IF PEER IS MUTED
                 let is_muted = {
                     let state = mute_state.lock().unwrap();
                     *state.get(&peer_addr).unwrap_or(&false)
@@ -109,7 +107,6 @@ pub async fn send_task(
                 if !is_muted {
                     let _ = socket.send(&msg).await;
                 }
-                // If muted, silently drop the packet
             }
             _ = cancel_token.cancelled() => {
                 println!("Send task cancelled");

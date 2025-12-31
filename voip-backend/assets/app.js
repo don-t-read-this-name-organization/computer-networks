@@ -1,4 +1,3 @@
-// --- Theme Toggle ---
 const themeToggle = document.getElementById('themeToggle');
 const body = document.body;
 const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -10,7 +9,6 @@ themeToggle.addEventListener('click', () => {
     localStorage.setItem('theme', newTheme);
 });
 
-// --- Audio Visualizer Setup ---
 const visualizer = document.getElementById('visualizer');
 const barCount = 24;
 for (let i = 0; i < barCount; i++) {
@@ -20,7 +18,6 @@ for (let i = 0; i < barCount; i++) {
 }
 const bars = visualizer.querySelectorAll('.bar');
 
-// --- Audio Context for Visualization ---
 let audioContext = null;
 let analyser = null;
 let microphone = null;
@@ -65,16 +62,13 @@ function animateVisualizer() {
     draw();
 }
 
-// --- Peer Tracking ---
-const peers = new Map(); // IP → { muted: bool, inCall: bool }
-
-// --- State & DOM ---
+const peers = new Map();
 let socket = null;
 let isConnected = false;
 let isCalling = false;
 let callStartTime = null;
 let timerInterval = null;
-let localIp = null; // 👈 Track local IP
+let localIp = null;
 
 const statusEl = document.getElementById('status');
 const connectBtn = document.getElementById('connectBtn');
@@ -86,8 +80,9 @@ const errorMessage = document.getElementById('errorMessage');
 const peersList = document.getElementById('peersList');
 const logsOutput = document.getElementById('logsOutput');
 const container = document.querySelector('.container');
+const peerIpInput = document.getElementById('peerIpInput');
+const setPeerBtn = document.getElementById('setPeerBtn');
 
-// --- Logging ---
 function addLog(message, className = '') {
     const entry = document.createElement('div');
     entry.className = `log-entry ${className}`;
@@ -115,9 +110,7 @@ function setLoading(element, isLoading) {
     }
 }
 
-// --- Peers UI ---
 function renderPeersList() {
-    // Always include self when connected
     const allPeers = new Map(peers);
     if (localIp && isConnected) {
         allPeers.set(localIp, { muted: isMuted, inCall: isCalling });
@@ -139,7 +132,6 @@ function renderPeersList() {
     }
 }
 
-// --- UI State Update ---
 function updateUI() {
     if (isConnected && !isCalling) {
         statusEl.textContent = "Connected";
@@ -176,7 +168,6 @@ function updateUI() {
     renderPeersList();
 }
 
-// --- WebSocket Functions ---
 function connect() {
     if (socket && socket.readyState === WebSocket.OPEN) return;
     setLoading(connectBtn, true);
@@ -300,7 +291,6 @@ function toggleMute() {
     updateUI();
 }
 
-// --- Call Timer ---
 function startCallTimer() {
     timerInterval = setInterval(() => {
         if (!callStartTime) return;
@@ -315,13 +305,21 @@ function stopCallTimer() {
     timerEl.textContent = "Call duration: 0s";
 }
 
-// --- Event Listeners ---
 connectBtn.addEventListener('click', connect);
 startCallBtn.addEventListener('click', startCall);
 endCallBtn.addEventListener('click', endCall);
 muteBtn.addEventListener('click', toggleMute);
+setPeerBtn.addEventListener('click', () => {
+    const ip = peerIpInput.value.trim();
+    if (ip && socket && socket.readyState === WebSocket.OPEN) {
+        addLog(`Manual peer IP set to: ${ip}`, "peer-event");
+    } else if (!ip) {
+        showError("Please enter a valid IP");
+    } else {
+        showError("Connect first before setting peer IP");
+    }
+});
 
-// Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
     if (e.key === 'c' && !e.ctrlKey) connect();
     if (e.key === 's' && !e.ctrlKey) startCall();
@@ -329,6 +327,5 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'm' && !e.ctrlKey) toggleMute();
 });
 
-// --- Initialize ---
 updateUI();
 addLog("VoIP client initialized");
