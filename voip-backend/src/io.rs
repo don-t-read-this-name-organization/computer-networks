@@ -55,8 +55,6 @@ pub fn input_stream_fn(
         }
     };
 
-    println!("Input config: {:?}", input_config);
-
     let seq = AtomicU16::new(0);
 
     let stream = match input_config.sample_format() {
@@ -71,7 +69,6 @@ pub fn input_stream_fn(
                     seq: seq.fetch_add(1, Relaxed),
                     samples,
                 };
-
                 let _ = channel.send(packet.serialize());
             },
             err_fn,
@@ -83,7 +80,6 @@ pub fn input_stream_fn(
     match stream {
         Ok(s) => {
             s.play().unwrap_or_default();
-            println!("Sending audio...");
             Ok(Some(s))
         }
         Err(e) => {
@@ -97,14 +93,13 @@ pub fn output_stream_fn(
     output_device: Device,
     buffer: Arc<Mutex<JitterBuffer>>,
 ) -> Result<Option<Stream>, ()> {
-    let output_config = match output_device.default_input_config() {
+    let output_config = match output_device.default_output_config() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("output config error: {}", e);
             return Err(());
         }
     };
-    println!("Output config: {:?}", output_config);
 
     let stream = match output_config.sample_format() {
         cpal::SampleFormat::F32 => output_device.build_output_stream(
@@ -125,7 +120,6 @@ pub fn output_stream_fn(
     match stream {
         Ok(s) => {
             s.play().unwrap_or_default();
-            println!("Receiving audio...");
             Ok(Some(s))
         }
         Err(e) => {

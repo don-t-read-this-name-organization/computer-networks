@@ -3,12 +3,12 @@ use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
-
-use cpal::default_host;
 use tokio::{
     signal::ctrl_c,
     sync::{broadcast, mpsc},
 };
+use cpal::default_host;
+
 
 use crate::{io::AudioState, jitter::JitterBuffer, networking::udp_task, web::web_task};
 

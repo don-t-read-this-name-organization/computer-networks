@@ -127,6 +127,9 @@ function renderPeersList() {
         peerEl.className = 'peer';
         let statusText = info.muted ? ' (muted)' : '';
         if (info.inCall) statusText += ' 📞';
+        if (ip === peerIpInput.value.trim()) {
+            statusText += ' 🔍 Target';
+        }
         peerEl.innerHTML = `<div class="peer-ip">${ip}${statusText}</div>`;
         peersList.appendChild(peerEl);
     }
@@ -309,15 +312,28 @@ connectBtn.addEventListener('click', connect);
 startCallBtn.addEventListener('click', startCall);
 endCallBtn.addEventListener('click', endCall);
 muteBtn.addEventListener('click', toggleMute);
+
 setPeerBtn.addEventListener('click', () => {
     const ip = peerIpInput.value.trim();
-    if (ip && socket && socket.readyState === WebSocket.OPEN) {
-        addLog(`Manual peer IP set to: ${ip}`, "peer-event");
-    } else if (!ip) {
-        showError("Please enter a valid IP");
-    } else {
-        showError("Connect first before setting peer IP");
+    if (!ip) {
+        showError("Please enter a valid IP address");
+        return;
     }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        showError("Connect first before setting peer IP");
+        return;
+    }
+
+    addLog(` Manual peer target set: ${ip}`, "peer-event");
+    peers.set(ip, { muted: false, inCall: false });
+    renderPeersList();
+
+    const originalText = setPeerBtn.textContent;
+    setPeerBtn.textContent = "✓ Set!";
+    setTimeout(() => {
+        setPeerBtn.textContent = originalText;
+    }, 1500);
 });
 
 document.addEventListener('keydown', (e) => {
