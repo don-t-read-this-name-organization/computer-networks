@@ -320,12 +320,23 @@ setPeerBtn.addEventListener('click', () => {
         return;
     }
 
+
+    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipPattern.test(ip)) {
+        showError("Invalid IP format");
+        return;
+    }
+
     if (!socket || socket.readyState !== WebSocket.OPEN) {
         showError("Connect first before setting peer IP");
         return;
     }
 
-    addLog(` Manual peer target set: ${ip}`, "peer-event");
+
+    socket.send(`target_ip:${ip}`);
+
+
+    addLog(` Calling target set: ${ip}`, "peer-event");
     peers.set(ip, { muted: false, inCall: false });
     renderPeersList();
 

@@ -3,12 +3,12 @@ use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
+
+use cpal::default_host;
 use tokio::{
     signal::ctrl_c,
     sync::{broadcast, mpsc},
 };
-use cpal::default_host;
-
 
 use crate::{io::AudioState, jitter::JitterBuffer, networking::udp_task, web::web_task};
 
@@ -30,11 +30,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let audio_clone = audio_state.clone();
 
     let peer_mute_state = Arc::new(Mutex::new(std::collections::HashMap::<SocketAddr, bool>::new()));
+    let peer_target = Arc::new(Mutex::new(std::collections::HashMap::<SocketAddr, String>::new()));
 
     tokio::spawn(web_task(tx_control));
 
     tokio::spawn(async move {
-        if let Err(e) = udp_task(tx_audio, rx_control, jitter_udp, audio_clone, peer_mute_state).await {
+        if let Err(e) = udp_task(tx_audio, rx_control, jitter_udp, audio_clone, peer_mute_state, peer_target).await {
             eprintln!("udp task error: {}", e);
         }
     });

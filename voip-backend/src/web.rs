@@ -20,11 +20,13 @@ use tokio::{
 use tower_http::services::ServeDir;
 
 type PeerState = Arc<Mutex<HashMap<SocketAddr, bool>>>;
+type PeerTarget = Arc<Mutex<HashMap<SocketAddr, String>>>;
 type LogSender = broadcast::Sender<String>;
 
 pub async fn web_task(control_tx: mpsc::Sender<(SocketAddr, String)>) {
     let (log_tx, _) = broadcast::channel::<String>(64);
     let peer_mute_state: PeerState = Arc::new(Mutex::new(HashMap::new()));
+    let peer_target: PeerTarget = Arc::new(Mutex::new(HashMap::new()));
 
     let app = Router::new()
         .route("/", get(main_page))
@@ -35,9 +37,10 @@ pub async fn web_task(control_tx: mpsc::Sender<(SocketAddr, String)>) {
                       ua: Option<TypedHeader<UserAgent>>,
                       info: ConnectInfo<SocketAddr>| {
                     let peer_state = peer_mute_state.clone();
+                    let peer_target_clone = peer_target.clone();
                     let log_tx_ws = log_tx.clone();
                     let control_tx_clone = control_tx.clone();
-                    ws_handler(ws, ua, info, control_tx_clone, peer_state, log_tx_ws)
+                    ws_handler(ws, ua, info, control_tx_clone, peer_state, peer_target_clone, log_tx_ws)
                 }
             }),
         )
@@ -63,6 +66,7 @@ async fn ws_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     tx_channel: mpsc::Sender<(SocketAddr, String)>,
     peer_mute_state: PeerState,
+    peer_target: PeerTarget,
     log_tx: LogSender,
 ) -> impl IntoResponse {
     let user_agent_str = if let Some(TypedHeader(ua)) = user_agent {
@@ -83,7 +87,7 @@ async fn ws_handler(
     let _ = log_tx.send(format!("PEER_LIST_UPDATE:{}", addr));
 
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, addr, tx_channel, peer_mute_state, log_tx, user_agent_str)
+        handle_socket(socket, addr, tx_channel, peer_mute_state, peer_target, log_tx, user_agent_str)
     })
 }
 
@@ -92,6 +96,7 @@ async fn handle_socket(
     who: SocketAddr,
     tx_channel: mpsc::Sender<(SocketAddr, String)>,
     peer_mute_state: PeerState,
+    peer_target: PeerTarget,
     log_tx: LogSender,
     _user_agent: String,
 ) {
@@ -106,6 +111,13 @@ async fn handle_socket(
                 println!("{}", log_msg);
                 let _ = log_tx.send(log_msg);
                 let _ = log_tx.send(format!("PEER_LIST_UPDATE:{}", who));
+            } else if text.starts_with("target_ip:") {
+                let ip_str = text.strip_prefix("target_ip:").unwrap_or("").to_string();
+                {
+                    let mut targets = peer_target.lock().unwrap();
+                    targets.insert(who, ip_str.clone());
+                }
+                let _ = log_tx.send(format!("Peer {} set target: {}", who, ip_str));
             } else if text == "start_call" || text == "end_call" {
                 let _ = tx_channel.send((who, text.to_string())).await;
                 let action = if text == "start_call" { "started call" } else { "ended call" };

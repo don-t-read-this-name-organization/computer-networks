@@ -1,6 +1,7 @@
 use std::{
     error::Error,
-    net::SocketAddr,
+    net::{SocketAddr, Ipv4Addr},
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
@@ -18,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{io::AudioState, jitter::JitterBuffer, packet::AudioPacket};
 
 type PeerMuteState = Arc<Mutex<std::collections::HashMap<SocketAddr, bool>>>;
+type PeerTarget = Arc<Mutex<std::collections::HashMap<SocketAddr, String>>>;
 
 struct CallHandler {
     pub cancel_token: CancellationToken,
@@ -31,6 +33,7 @@ pub async fn udp_task(
     jitter: Arc<Mutex<JitterBuffer>>,
     audio_state: Arc<Mutex<AudioState>>,
     peer_mute_state: PeerMuteState,
+    peer_target: PeerTarget,
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
     let mut call_handler: Option<CallHandler> = None;
@@ -38,8 +41,21 @@ pub async fn udp_task(
     loop {
         if let Some((address, msg)) = control_channel.recv().await {
             if msg.contains("start_call") {
-                let target_ip = address.ip();
-                let target_addr = SocketAddr::new(target_ip, 40000);
+                // Get target IP from peer_target map, fallback to sender's IP
+                let target_ip_str = {
+                    let targets = peer_target.lock().unwrap();
+                    targets.get(&address).cloned().unwrap_or_else(|| address.ip().to_string())
+                };
+
+                // Parse IP
+                let target_ip = if let Ok(ip) = Ipv4Addr::from_str(&target_ip_str) {
+                    ip
+                } else {
+                    eprintln!("Invalid target IP: {}", target_ip_str);
+                    continue;
+                };
+
+                let target_addr = SocketAddr::new(target_ip.into(), 40000);
                 let _ = socket.connect(target_addr).await;
                 let cancel_token = CancellationToken::new();
                 let audio_rx = audio_channel.subscribe();
