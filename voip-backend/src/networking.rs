@@ -19,7 +19,6 @@ use crate::{io::AudioState, jitter::JitterBuffer, packet::AudioPacket};
 struct CallHandler {
     pub cancel_token: CancellationToken,
     pub send_handle: JoinHandle<()>,
-    pub recv_handle: JoinHandle<()>,
 }
 
 pub async fn udp_task(
@@ -31,6 +30,15 @@ pub async fn udp_task(
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
     let mut call_handler: Option<CallHandler> = None;
+
+    // Spawn receive_task always
+    let socket_recv = socket.clone();
+    let jitter_recv = jitter.clone();
+    let tx_ws_recv = tx_ws.clone();
+    tokio::spawn(async move {
+        let _ = receive_task(socket_recv, jitter_recv, CancellationToken::new(), tx_ws_recv).await;
+    });
+
     loop {
         if let Some((address, msg)) = control_channel.recv().await {
             if msg.starts_with("pinging ") {
@@ -58,20 +66,9 @@ pub async fn udp_task(
                     })
                 };
 
-                let recv_handle = {
-                    let token = cancel_token.clone();
-                    let socket_recv = socket.clone();
-                    let jitter_recv = jitter.clone();
-                    let tx_ws_recv = tx_ws.clone();
-                    tokio::spawn(async move {
-                        let _ = receive_task(socket_recv, jitter_recv, token, tx_ws_recv).await;
-                    })
-                };
-
                 call_handler = Some(CallHandler {
                     cancel_token,
                     send_handle,
-                    recv_handle,
                 });
                 let mut state = audio_state.lock().unwrap();
                 let jitter_audio = jitter.clone();
@@ -81,7 +78,7 @@ pub async fn udp_task(
             if msg.contains("end_call") {
                 if let Some(call) = call_handler {
                     call.cancel_token.cancel();
-                    let (_, _) = tokio::join!(call.send_handle, call.recv_handle);
+                    let _ = call.send_handle.await;
                     call_handler = None;
                     let mut state = audio_state.lock().unwrap();
                     state.clear();
