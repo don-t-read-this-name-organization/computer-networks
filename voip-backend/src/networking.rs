@@ -27,11 +27,22 @@ pub async fn udp_task(
     mut control_channel: SingleReceiver<(SocketAddr, String)>,
     jitter: Arc<Mutex<JitterBuffer>>,
     audio_state: Arc<Mutex<AudioState>>,
+    tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
     let mut call_handler: Option<CallHandler> = None;
     loop {
         if let Some((address, msg)) = control_channel.recv().await {
+            if msg.starts_with("pinging ") {
+                let target_ip_str = msg.strip_prefix("pinging ").unwrap().trim();
+                if let Ok(target_ip) = target_ip_str.parse::<std::net::IpAddr>() {
+                    let target_addr = SocketAddr::new(target_ip, 40000);
+                    // Send ping packet: seq=0, empty samples
+                    let ping_packet = AudioPacket { seq: 0, samples: vec![] };
+                    let data = ping_packet.serialize();
+                    let _ = socket.send_to(&data, target_addr).await;
+                }
+            }
             if msg.contains("start_call") {
                 let target_ip = address.ip();
                 let target_addr = SocketAddr::new(target_ip, 40000);
@@ -51,8 +62,9 @@ pub async fn udp_task(
                     let token = cancel_token.clone();
                     let socket_recv = socket.clone();
                     let jitter_recv = jitter.clone();
+                    let tx_ws_recv = tx_ws.clone();
                     tokio::spawn(async move {
-                        let _ = receive_task(socket_recv, jitter_recv, token).await;
+                        let _ = receive_task(socket_recv, jitter_recv, token, tx_ws_recv).await;
                     })
                 };
 
@@ -104,6 +116,7 @@ pub async fn receive_task(
     socket: Arc<UdpSocket>,
     jitter: Arc<Mutex<JitterBuffer>>,
     cancel_token: CancellationToken,
+    tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = [0u8; 4096];
     let mut last_seq: Option<u16> = None;
@@ -112,17 +125,22 @@ pub async fn receive_task(
             recv = socket.recv_from(&mut buf) => {
                 if let Ok((size, _)) = recv {
                      if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
-                      if let Some(prev) = last_seq {
-                          let exprected = prev.wrapping_add(1);
-                          if packet.seq != exprected {
-                              println!("Packet loss: exprected {}, got {}", exprected, packet.seq);
+                      if packet.seq == 0 && packet.samples.is_empty() {
+                          // It's a ping
+                          let _ = tx_ws.send("pinging".to_string());
+                      } else {
+                          if let Some(prev) = last_seq {
+                              let exprected = prev.wrapping_add(1);
+                              if packet.seq != exprected {
+                                  println!("Packet loss: exprected {}, got {}", exprected, packet.seq);
+                              }
                           }
+
+                          last_seq = Some(packet.seq);
+
+                          let mut jb = jitter.lock().unwrap();
+                          jb.push_packet(&packet.samples);
                       }
-
-                      last_seq = Some(packet.seq);
-
-                      let mut jb = jitter.lock().unwrap();
-                      jb.push_packet(&packet.samples);
                   }
                 }
             }

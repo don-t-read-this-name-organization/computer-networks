@@ -84,9 +84,6 @@ class VoIPApp {
     }
 
     rejectCall() {
-        // For reject, we can send end_call or just hide the modal
-        // Assuming reject ends the attempt
-        this.sendMessage('end_call');
         this.hideIncomingCall();
         this.setStatus('Idle');
     }
