@@ -27,13 +27,16 @@ impl AudioState {
         input_channel: Sender<Vec<u8>>,
         output_jitter: Arc<Mutex<JitterBuffer>>,
     ) {
-        let input_device = self.host.default_input_device().expect("No input device");
         let output_device = self.host.default_output_device().expect("No output device");
-        self.input = input_stream_fn(input_device, input_channel).unwrap_or(None);
         self.output = output_stream_fn(output_device, output_jitter).unwrap_or(None);
-        if self.input.is_none() || self.output.is_none() {
+        if let Some(input_device) = self.host.default_input_device() {
+            self.input = input_stream_fn(input_device, input_channel).unwrap_or(None);
+        } else {
+            self.input = None;
+        }
+        if self.output.is_none() {
             self.clear();
-            eprintln!("Failed to create streams");
+            eprintln!("Failed to create output stream");
         }
     }
 
