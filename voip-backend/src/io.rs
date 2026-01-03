@@ -97,7 +97,7 @@ pub fn output_stream_fn(
     output_device: Device,
     buffer: Arc<Mutex<JitterBuffer>>,
 ) -> Result<Option<Stream>, ()> {
-    let output_config = match output_device.default_output_config() {
+    let output_config = match output_device.default_input_config() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("output config error: {}", e);
