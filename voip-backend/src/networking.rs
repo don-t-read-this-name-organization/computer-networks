@@ -49,12 +49,14 @@ pub async fn udp_task(
                     let ping_packet = AudioPacket { seq: 0, samples: vec![] };
                     let data = ping_packet.serialize();
                     let _ = socket.send_to(&data, target_addr).await;
+                    println!("Sent ping to {}", target_addr);
                 }
             }
             if msg.contains("start_call") {
                 let target_ip = address.ip();
                 let target_addr = SocketAddr::new(target_ip, 40000);
                 let _ = socket.connect(target_addr).await;
+                println!("Starting call to {}", target_addr);
                 let cancel_token = CancellationToken::new();
                 let audio_rx = audio_channel.subscribe();
 
@@ -98,6 +100,7 @@ pub async fn send_task(
         tokio::select! {
             Ok(msg) = audio_channel.recv() => {
                 let _ = socket.send(&msg).await;
+                println!("Sent audio packet");
             }
             _ = cancel_token.cancelled() => {
                 println!("Send task cancelled");
@@ -125,7 +128,9 @@ pub async fn receive_task(
                       if packet.seq == 0 && packet.samples.is_empty() {
                           // It's a ping
                           let _ = tx_ws.send("pinging".to_string());
+                          println!("Received ping");
                       } else {
+                          println!("Received audio packet seq {}", packet.seq);
                           if let Some(prev) = last_seq {
                               let exprected = prev.wrapping_add(1);
                               if packet.seq != exprected {
