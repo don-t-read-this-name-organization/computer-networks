@@ -9,7 +9,6 @@ use axum::{
 };
 use axum::extract::ws::Message;
 use axum_extra::TypedHeader;
-use axum_extra::headers;
 use axum_extra::headers::UserAgent;
 use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use futures_util::SinkExt;
@@ -33,7 +32,7 @@ pub async fn web_task(channel: Sender<(SocketAddr, String)>, tx_ws: BroadcastSen
             }),
         )
         .nest_service("/assets", ServeDir::new("assets"));
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("DEBUG: Before serve");
     serve(
         listener,
