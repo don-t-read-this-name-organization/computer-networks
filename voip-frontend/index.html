@@ -3,26 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoIP Frontend</title>
+    <title>VoIP Communicator</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>VoIP Call</h1>
-        <div class="status" id="status">Idle</div>
-        <div class="call-controls">
-            <input type="text" id="targetIp" placeholder="Target IP Address" />
-            <button id="callBtn">Call</button>
-            <button id="endCallBtn" disabled>End Call</button>
-            <div id="micStatus">🎤</div>
-        </div>
+    <div class="app-container">
+        <header class="app-header">
+            <h1 class="app-title">VoIP Communicator</h1>
+            <p class="app-subtitle">Connect with ease</p>
+        </header>
+
+        <main class="app-main">
+            <div class="status-card">
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-text" id="status">Idle</span>
+                </div>
+                <div class="mic-indicator" id="micStatus">🎤</div>
+            </div>
+
+            <div class="controls-section">
+                <div class="input-group">
+                    <label for="targetIp" class="input-label">Target IP Address</label>
+                    <input type="text" id="targetIp" placeholder="e.g., 192.168.1.100" class="ip-input" />
+                </div>
+
+                <div class="button-group">
+                    <button id="callBtn" class="btn btn-primary">
+                        <span class="btn-icon">📞</span>
+                        Call
+                    </button>
+                    <button id="endCallBtn" class="btn btn-secondary" disabled>
+                        <span class="btn-icon">📴</span>
+                        End Call
+                    </button>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <div class="modal" id="incomingModal" style="display: none;">
-        <div class="modal-content">
-            <p>Incoming call</p>
-            <button id="acceptBtn">Accept</button>
-            <button id="rejectBtn">Reject</button>
+    <!-- Incoming Call Modal -->
+    <div class="modal-overlay" id="incomingModal" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Incoming Call</h2>
+                <p class="modal-subtitle">Someone is calling you</p>
+            </div>
+            <div class="modal-actions">
+                <button id="rejectBtn" class="btn btn-reject">
+                    <span class="btn-icon">❌</span>
+                    Reject
+                </button>
+                <button id="acceptBtn" class="btn btn-accept">
+                    <span class="btn-icon">✅</span>
+                    Accept
+                </button>
+            </div>
         </div>
     </div>
 
