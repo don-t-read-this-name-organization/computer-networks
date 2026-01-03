@@ -51,9 +51,9 @@ button {
     color: white;
 }
 
-button:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
+#micStatus {
+    font-size: 1.5em;
+    margin-left: 10px;
 }
 
 .modal {

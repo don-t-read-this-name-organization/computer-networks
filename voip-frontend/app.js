@@ -20,6 +20,7 @@ class VoIPApp {
     }
 
     init() {
+        this.checkMic();
         this.connectWebSocket();
         this.bindEvents();
     }
@@ -102,6 +103,20 @@ class VoIPApp {
             console.log('Sent:', message);
         } else {
             console.error('WebSocket not connected');
+        }
+    }
+
+    checkMic() {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(() => {
+                    document.getElementById('micStatus').textContent = '🎤';
+                })
+                .catch(() => {
+                    document.getElementById('micStatus').textContent = '🔴🎤';
+                });
+        } else {
+            document.getElementById('micStatus').textContent = '🔴🎤';
         }
     }
 
