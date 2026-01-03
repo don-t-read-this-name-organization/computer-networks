@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoIP Frontend</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>VoIP Call</h1>
+        <div class="status" id="status">Idle</div>
+        <div class="call-controls">
+            <input type="text" id="targetIp" placeholder="Target IP Address" />
+            <button id="callBtn">Call</button>
+            <button id="endCallBtn" disabled>End Call</button>
+        </div>
+    </div>
+
+    <div class="modal" id="incomingModal" style="display: none;">
+        <div class="modal-content">
+            <p>Incoming call</p>
+            <button id="acceptBtn">Accept</button>
+            <button id="rejectBtn">Reject</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
