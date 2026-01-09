@@ -15,6 +15,10 @@ impl JitterBuffer {
         for &s in samples {
             self.buffer.push_back(s);
         }
+        // Limit buffer to reduce delay
+        while self.buffer.len() > 4800 { // ~0.1 second at 48kHz
+            self.buffer.pop_front();
+        }
     }
 
     pub fn pop_sample(&mut self) -> i16 {
