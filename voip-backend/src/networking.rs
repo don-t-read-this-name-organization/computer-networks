@@ -139,6 +139,7 @@ pub async fn receive_task(
     local_ip: IpAddr,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = [0u8; 4096];
+    let mut last_seq: u16 = 0;
 
     loop {
         tokio::select! {
@@ -153,7 +154,14 @@ pub async fn receive_task(
                             let _ = tx_ws.send("pinging".to_string());
                             let _ = tx_caller.send(addr.ip()).await;
                         } else {
+                            // Handle packet loss by inserting silence
+                            if last_seq != 0 && packet.seq > last_seq + 1 {
+                                let missing_packets = (packet.seq - last_seq - 1) as usize;
+                                let silence = vec![0i16; missing_packets * 960];
+                                jitter.lock().unwrap().push_packet(&silence);
+                            }
                             jitter.lock().unwrap().push_packet(&packet.samples);
+                            last_seq = packet.seq;
                         }
                     }
                 }

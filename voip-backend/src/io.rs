@@ -32,7 +32,7 @@ impl AudioState {
 
         // Check if input and output devices are the same to prevent echo
         if let Some(ref input_dev) = input_device {
-            if let (Ok(input_name), Ok(output_name)) = (input_dev.name(), output_device.name()) {
+            if let (Ok(input_name), Ok(output_name)) = (input_dev.description(), output_device.description()) {
                 if input_name == output_name {
                     eprintln!("Warning: Input and output devices are the same. This may cause audio feedback. Consider using headphones or separate devices.");
                 }
@@ -61,7 +61,7 @@ pub fn input_stream_fn(
     input_device: Device,
     channel: Sender<Vec<u8>>,
 ) -> Result<Option<Stream>, ()> {
-    let input_config = match input_device.default_input_config() {
+    let config = match input_device.default_input_config() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("input config error: {}", e);
@@ -69,24 +69,27 @@ pub fn input_stream_fn(
         }
     };
 
-    println!("Input config: {:?}", input_config);
+    println!("Using input config: {:?}", config);
 
     let seq = AtomicU16::new(0);
+    let sample_buffer = Arc::new(Mutex::new(Vec::new()));
 
-    let stream = match input_config.sample_format() {
+    let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => input_device.build_input_stream(
-            &input_config.into(),
+            &config.into(),
             move |data: &[f32], _| {
-                let mut samples = Vec::with_capacity(data.len());
+                let mut buffer = sample_buffer.lock().unwrap();
                 for &s in data {
-                    samples.push((s * i16::MAX as f32) as i16);
+                    buffer.push((s * i16::MAX as f32) as i16);
                 }
-                let packet = AudioPacket {
-                    seq: seq.fetch_add(1, Relaxed),
-                    samples,
-                };
-
-                let _ = channel.send(packet.serialize());
+                while buffer.len() >= 960 {
+                    let chunk: Vec<i16> = buffer.drain(0..960).collect();
+                    let packet = AudioPacket {
+                        seq: seq.fetch_add(1, Relaxed),
+                        samples: chunk,
+                    };
+                    let _ = channel.send(packet.serialize());
+                }
             },
             err_fn,
             None,
@@ -111,18 +114,18 @@ pub fn output_stream_fn(
     output_device: Device,
     buffer: Arc<Mutex<JitterBuffer>>,
 ) -> Result<Option<Stream>, ()> {
-    let output_config = match output_device.default_output_config() {
+    let config = match output_device.default_output_config() {
         Ok(config) => config,
         Err(e) => {
             eprintln!("output config error: {}", e);
             return Err(());
         }
     };
-    println!("Output config: {:?}", output_config);
+    println!("Using output config: {:?}", config);
 
-    let stream = match output_config.sample_format() {
+    let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => output_device.build_output_stream(
-            &output_config.into(),
+            &config.into(),
             move |data: &mut [f32], _| {
                 let mut jb = buffer.lock().unwrap();
                 for s in data {
