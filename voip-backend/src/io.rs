@@ -58,13 +58,19 @@ pub fn input_stream_fn(
         }
     };
 
-    println!("Input config: {:?}", input_config);
+    let stream_config = cpal::StreamConfig {
+        channels: input_config.channels(),
+        sample_rate: input_config.sample_rate(),
+        buffer_size: cpal::BufferSize::Fixed(256),
+    };
+
+    println!("Input config: {:?}", stream_config);
 
     let seq = AtomicU16::new(0);
 
     let stream = match input_config.sample_format() {
         cpal::SampleFormat::F32 => input_device.build_input_stream(
-            &input_config.into(),
+            &stream_config,
             move |data: &[f32], _| {
                 let mut samples = Vec::with_capacity(data.len());
                 for &s in data {
@@ -107,11 +113,18 @@ pub fn output_stream_fn(
             return Err(());
         }
     };
-    println!("Output config: {:?}", output_config);
+
+    let stream_config = cpal::StreamConfig {
+        channels: output_config.channels(),
+        sample_rate: output_config.sample_rate(),
+        buffer_size: cpal::BufferSize::Fixed(256),
+    };
+
+    println!("Output config: {:?}", stream_config);
 
     let stream = match output_config.sample_format() {
         cpal::SampleFormat::F32 => output_device.build_output_stream(
-            &output_config.into(),
+            &stream_config,
             move |data: &mut [f32], _| {
                 let mut jb = buffer.lock().unwrap();
                 for s in data {
