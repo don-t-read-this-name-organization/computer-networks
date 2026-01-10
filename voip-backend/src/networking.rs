@@ -132,6 +132,10 @@ pub async fn udp_task(
                             let _ = call.send_handle.await;
                             audio_state.lock().unwrap().clear();
                         }
+                        let _ = tx_ws.send("call_ended".to_string());
+                    } else if msg.starts_with("offer ") || msg.starts_with("answer ") || msg.starts_with("ice ") {
+                        // Relay WebRTC signaling messages
+                        let _ = tx_ws.send(msg.clone());
                     }
                 }
             }

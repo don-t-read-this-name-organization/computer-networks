@@ -37,6 +37,17 @@ class VoIPApp {
         this.initWebRTC();
     }
 
+    async checkMic() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+            document.getElementById('micStatus').textContent = '🎤';
+        } catch (error) {
+            console.error('Microphone access denied:', error);
+            document.getElementById('micStatus').textContent = '🚫';
+        }
+    }
+
     connectWebSocket() {
         this.ws = new WebSocket('ws://localhost:3000/signal');
 
@@ -91,9 +102,7 @@ class VoIPApp {
 
     handleMessage(message) {
         console.log('Received:', message);
-        if (message === 'pinging') {
-            this.showIncomingCall();
-        } else if (message.startsWith('offer ')) {
+        if (message.startsWith('offer ')) {
             const offer = JSON.parse(message.substring(6));
             this.handleOffer(offer);
         } else if (message.startsWith('answer ')) {
@@ -102,6 +111,16 @@ class VoIPApp {
         } else if (message.startsWith('ice ')) {
             const candidate = JSON.parse(message.substring(4));
             this.handleIceCandidate(candidate);
+        } else if (message === 'call_ended') {
+            this.setStatus('Idle');
+            if (this.peerConnection) {
+                this.peerConnection.close();
+                this.peerConnection = null;
+            }
+            if (this.localStream) {
+                this.localStream.getTracks().forEach(track => track.stop());
+                this.localStream = null;
+            }
         }
         // Other messages can be handled here if needed
     }

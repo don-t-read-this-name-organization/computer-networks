@@ -29,3 +29,20 @@ impl AudioPacket {
         Some(Self { seq, samples })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let packet = AudioPacket {
+            seq: 123,
+            samples: vec![1000, -2000, 3000],
+        };
+        let serialized = packet.serialize();
+        let deserialized = AudioPacket::deserialize(&serialized).unwrap();
+        assert_eq!(packet.seq, deserialized.seq);
+        assert_eq!(packet.samples, deserialized.samples);
+    }
+}
