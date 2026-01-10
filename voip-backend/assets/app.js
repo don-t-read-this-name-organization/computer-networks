@@ -55,7 +55,7 @@ class VoIPApp {
 
     handleMessage(message) {
         console.log('Received:', message);
-        if (message === 'pinging') {
+        if (message === 'pinging' && this.status !== 'Calling') {
             this.showIncomingCall();
         }
         // Other messages can be handled here if needed

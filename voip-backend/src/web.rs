@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 use axum::{
     Router,
@@ -13,22 +12,22 @@ use axum_extra::TypedHeader;
 use axum_extra::headers::UserAgent;
 use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use futures_util::SinkExt;
-use tokio::sync::mpsc::{self, Sender};
-use tokio::{net::TcpListener};
+use tokio::sync::broadcast::Sender as BroadcastSender;
+use tokio::{net::TcpListener, sync::mpsc::Sender};
 use tower_http::services::ServeDir;
 
-pub async fn web_task(channel: Sender<(SocketAddr, String)>, clients: std::sync::Arc<std::sync::Mutex<HashMap<IpAddr, Sender<String>>>>) {
+pub async fn web_task(channel: Sender<(SocketAddr, String)>, tx_ws: BroadcastSender<String>) {
     let app = Router::new()
         .route("/", get(main_page))
         .route(
             "/signal",
             any({
                 let channel = channel.clone();
-                let clients = clients.clone();
+                let tx_ws = tx_ws.clone();
                 move |ws: WebSocketUpgrade,
                       ua: Option<TypedHeader<UserAgent>>,
                       info: ConnectInfo<SocketAddr>| {
-                    ws_handler(ws, ua, info, channel, clients)
+                    ws_handler(ws, ua, info, channel, tx_ws)
                 }
             }),
         )
@@ -52,7 +51,7 @@ async fn ws_handler(
     user_agent: Option<TypedHeader<UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     tx_channel: Sender<(SocketAddr, String)>,
-    clients: std::sync::Arc<std::sync::Mutex<HashMap<IpAddr, Sender<String>>>>,
+    tx_ws: BroadcastSender<String>,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
@@ -60,24 +59,22 @@ async fn ws_handler(
         String::from("Unknown browser")
     };
     println!("`{user_agent}` at {addr} connected.");
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, tx_channel, clients))
+    ws.on_upgrade(move |socket| handle_socket(socket, addr, tx_channel, tx_ws))
 }
 
 async fn handle_socket(
     socket: WebSocket,
     who: SocketAddr,
     tx_channel: Sender<(SocketAddr, String)>,
-    clients: std::sync::Arc<std::sync::Mutex<HashMap<IpAddr, Sender<String>>>>,
+    tx_ws: BroadcastSender<String>,
 ) {
-    let (tx_client, rx_client) = mpsc::channel(32);
-    clients.lock().unwrap().insert(who.ip(), tx_client);
-
+    let rx_ws = tx_ws.subscribe();
     let (sender, receiver): (SplitSink<WebSocket, Message>, SplitStream<WebSocket>) = socket.split();
 
     let send_task = tokio::spawn(async move {
         let mut sender: SplitSink<WebSocket, Message> = sender;
-        let mut rx_client = rx_client;
-        while let Some(msg) = rx_client.recv().await {
+        let mut rx_ws = rx_ws;
+        while let Ok(msg) = rx_ws.recv().await {
             if sender.send(Message::Text(msg.into())).await.is_err() {
                 break;
             }
@@ -96,6 +93,5 @@ async fn handle_socket(
         }
     }
 
-    clients.lock().unwrap().remove(&who.ip());
     send_task.abort();
 }

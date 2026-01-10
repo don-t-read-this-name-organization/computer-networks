@@ -1,7 +1,6 @@
 use std::{
-    collections::HashMap,
     error::Error,
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     sync::{Arc, Mutex},
 };
 
@@ -26,14 +25,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let audio_state = Arc::new(Mutex::new(AudioState::new(host)));
     let (tx_control, rx_control) = mpsc::channel::<(SocketAddr, String)>(32);
     let (tx_audio, _rx_audio) = broadcast::channel::<Vec<u8>>(128);
-    let clients = Arc::new(Mutex::new(HashMap::<IpAddr, mpsc::Sender<String>>::new()));
+    let (tx_ws, _rx_ws) = broadcast::channel::<String>(32);
     let jitter_buffer = Arc::new(Mutex::new(JitterBuffer::new()));
     let jitter_udp = jitter_buffer.clone();
     let audio_clone = audio_state.clone();
 
-    tokio::spawn(web_task(tx_control, clients.clone()));
+    tokio::spawn(web_task(tx_control, tx_ws.clone()));
     tokio::spawn(async move {
-        if let Err(e) = udp_task(tx_audio, rx_control, jitter_udp, audio_clone, clients).await {
+        if let Err(e) = udp_task(tx_audio, rx_control, jitter_udp, audio_clone, tx_ws).await {
             eprintln!("udp task error: {}", e);
         }
     });

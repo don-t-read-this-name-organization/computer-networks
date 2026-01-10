@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     error::Error,
     net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
@@ -30,7 +29,7 @@ pub async fn udp_task(
     mut control_channel: SingleReceiver<(SocketAddr, String)>,
     jitter: Arc<Mutex<JitterBuffer>>,
     audio_state: Arc<Mutex<AudioState>>,
-    clients: Arc<Mutex<HashMap<IpAddr, mpsc::Sender<String>>>>,
+    tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
 
@@ -49,7 +48,7 @@ pub async fn udp_task(
                 socket_recv,
                 jitter_recv,
                 CancellationToken::new(),
-                clients.clone(),
+                tx_ws.clone(),
                 tx_caller_recv,
             )
             .await;
@@ -143,7 +142,7 @@ pub async fn receive_task(
     socket: Arc<UdpSocket>,
     jitter: Arc<Mutex<JitterBuffer>>,
     cancel_token: CancellationToken,
-    clients: Arc<Mutex<HashMap<IpAddr, mpsc::Sender<String>>>>,
+    tx_ws: BroadcastSender<String>,
     tx_caller: mpsc::Sender<IpAddr>,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = [0u8; 4096];
@@ -154,13 +153,7 @@ pub async fn receive_task(
                 if let Ok((size, addr)) = recv {
                     if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
                         if packet.seq == 0 {
-                            let tx = {
-                                let clients = clients.lock().unwrap();
-                                clients.get(&addr.ip()).cloned()
-                            };
-                            if let Some(tx) = tx {
-                                let _ = tx.send("pinging".to_string()).await;
-                            }
+                            let _ = tx_ws.send("pinging".to_string());
                             let _ = tx_caller.send(addr.ip()).await;
                         } else {
                             jitter.lock().unwrap().push_packet(&packet.samples);
