@@ -60,7 +60,7 @@ pub fn input_stream_fn(
 
     let stream_config = cpal::StreamConfig {
         channels: input_config.channels(),
-        sample_rate: input_config.sample_rate(),
+        sample_rate: 44100,
         buffer_size: cpal::BufferSize::Fixed(256),
     };
 
@@ -116,7 +116,7 @@ pub fn output_stream_fn(
 
     let stream_config = cpal::StreamConfig {
         channels: output_config.channels(),
-        sample_rate: output_config.sample_rate(),
+        sample_rate: 44100,
         buffer_size: cpal::BufferSize::Fixed(256),
     };
 
