@@ -60,8 +60,8 @@ pub fn input_stream_fn(
 
     let stream_config = cpal::StreamConfig {
         channels: input_config.channels(),
-        sample_rate: 44100,
-        buffer_size: cpal::BufferSize::Fixed(256),
+        sample_rate: 48000, // Use 48kHz for VoIP
+        buffer_size: cpal::BufferSize::Fixed(960), // 20ms at 48kHz
     };
 
     println!("Input config: {:?}", stream_config);
@@ -116,8 +116,8 @@ pub fn output_stream_fn(
 
     let stream_config = cpal::StreamConfig {
         channels: output_config.channels(),
-        sample_rate: 44100,
-        buffer_size: cpal::BufferSize::Fixed(256),
+        sample_rate: 48000, // Use 48kHz for VoIP
+        buffer_size: cpal::BufferSize::Fixed(960), // 20ms at 48kHz
     };
 
     println!("Output config: {:?}", stream_config);

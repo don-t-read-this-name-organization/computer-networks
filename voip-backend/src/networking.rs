@@ -145,7 +145,7 @@ pub async fn send_task(
     cancel_token: CancellationToken,
     tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut interval = interval(Duration::from_millis(50));
+    let mut interval = interval(Duration::from_millis(20)); // Send every 20ms
     let mut last_data = None;
 
     loop {
@@ -154,6 +154,7 @@ pub async fn send_task(
                 if let Some(packet) = AudioPacket::deserialize(&data) {
                     let rms = calculate_rms(&packet.samples);
                     let _ = tx_ws.send(format!("volume local {}", rms));
+                    println!("Sending packet seq: {}, samples: {}", packet.seq, packet.samples.len());
                 }
                 last_data = Some(data.clone());
                 let _ = socket.send(&data).await;
@@ -199,6 +200,7 @@ pub async fn receive_task(
                             let rms = calculate_rms(&packet.samples);
                             let _ = tx_ws.send(format!("volume received {}", rms));
                             jitter.lock().unwrap().push_packet(&packet.samples);
+                            println!("Received packet seq: {}, samples: {}", packet.seq, packet.samples.len());
                         }
                     }
                 }

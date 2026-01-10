@@ -15,8 +15,8 @@ impl JitterBuffer {
         for &s in samples {
             self.buffer.push_back(s);
         }
-        // Limit buffer to reduce delay
-        while self.buffer.len() > 4800 { // ~0.1 second at 48kHz
+        // Limit buffer to reduce delay - 20ms * 2 = 40ms max delay
+        while self.buffer.len() > 1920 { // 40ms at 48kHz
             self.buffer.pop_front();
         }
     }

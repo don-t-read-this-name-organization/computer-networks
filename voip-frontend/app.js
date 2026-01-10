@@ -12,6 +12,10 @@ class VoIPApp {
         this.localVolume = 0;
         this.receivedVolume = 0;
 
+        // WebRTC
+        this.peerConnection = null;
+        this.localStream = null;
+
         // DOM elements
         this.statusEl = document.getElementById('status');
         this.targetIpEl = document.getElementById('targetIp');
@@ -30,6 +34,7 @@ class VoIPApp {
         this.checkMic();
         this.connectWebSocket();
         this.bindEvents();
+        this.initWebRTC();
     }
 
     connectWebSocket() {
@@ -60,10 +65,43 @@ class VoIPApp {
         this.rejectBtn.addEventListener('click', () => this.rejectCall());
     }
 
+    initWebRTC() {
+        this.peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        this.peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                this.sendMessage('ice ' + JSON.stringify(event.candidate));
+            }
+        };
+
+        this.peerConnection.ontrack = (event) => {
+            const remoteAudio = new Audio();
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio.play();
+        };
+
+        this.peerConnection.onconnectionstatechange = () => {
+            if (this.peerConnection.connectionState === 'connected') {
+                this.setStatus('In Call');
+            }
+        };
+    }
+
     handleMessage(message) {
         console.log('Received:', message);
         if (message === 'pinging') {
             this.showIncomingCall();
+        } else if (message.startsWith('offer ')) {
+            const offer = JSON.parse(message.substring(6));
+            this.handleOffer(offer);
+        } else if (message.startsWith('answer ')) {
+            const answer = JSON.parse(message.substring(7));
+            this.handleAnswer(answer);
+        } else if (message.startsWith('ice ')) {
+            const candidate = JSON.parse(message.substring(4));
+            this.handleIceCandidate(candidate);
         }
         // Other messages can be handled here if needed
     }
@@ -76,28 +114,83 @@ class VoIPApp {
         }
         if (this.status !== 'Idle') return;
 
-        this.sendMessage(`pinging ${this.targetIp}`);
         this.setStatus('Calling');
+        this.createOffer();
     }
 
     endCall() {
+        if (this.peerConnection) {
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream = null;
+        }
         this.sendMessage('end_call');
         this.setStatus('Idle');
     }
 
-    acceptCall() {
-        this.sendMessage('start_call');
-        this.hideIncomingCall();
-        this.setStatus('In Call');
+    async createOffer() {
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.localStream.getTracks().forEach(track => this.peerConnection.addTrack(track, this.localStream));
+            this.setupAudioVisualizer(this.localStream);
+
+            const offer = await this.peerConnection.createOffer();
+            await this.peerConnection.setLocalDescription(offer);
+            this.sendMessage('offer ' + JSON.stringify(offer));
+        } catch (error) {
+            console.error('Error creating offer:', error);
+            this.setStatus('Idle');
+        }
+    }
+
+    async handleOffer(offer) {
+        try {
+            await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            this.showIncomingCall();
+        } catch (error) {
+            console.error('Error handling offer:', error);
+        }
+    }
+
+    async handleAnswer(answer) {
+        try {
+            await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (error) {
+            console.error('Error handling answer:', error);
+        }
+    }
+
+    async handleIceCandidate(candidate) {
+        try {
+            await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (error) {
+            console.error('Error handling ICE candidate:', error);
+        }
+    }
+
+    async acceptCall() {
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.localStream.getTracks().forEach(track => this.peerConnection.addTrack(track, this.localStream));
+            this.setupAudioVisualizer(this.localStream);
+
+            const answer = await this.peerConnection.createAnswer();
+            await this.peerConnection.setLocalDescription(answer);
+            this.sendMessage('answer ' + JSON.stringify(answer));
+            this.hideIncomingCall();
+            this.setStatus('In Call');
+        } catch (error) {
+            console.error('Error accepting call:', error);
+            this.setStatus('Idle');
+        }
     }
 
     rejectCall() {
         this.hideIncomingCall();
         this.setStatus('Idle');
-    }
-
-    showIncomingCall() {
-        this.incomingModal.style.display = 'flex';
     }
 
     hideIncomingCall() {
