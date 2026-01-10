@@ -31,6 +31,7 @@ pub async fn udp_task(
     tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind("0.0.0.0:40000").await?);
+    let local_ip = socket.local_addr()?.ip();
 
     let mut call_handler: Option<CallHandler> = None;
     let mut caller_ip: Option<IpAddr> = None;
@@ -50,6 +51,7 @@ pub async fn udp_task(
                 CancellationToken::new(),
                 tx_ws_recv,
                 tx_caller_recv,
+                local_ip,
             )
             .await;
         });
@@ -134,6 +136,7 @@ pub async fn receive_task(
     cancel_token: CancellationToken,
     tx_ws: BroadcastSender<String>,
     tx_caller: mpsc::Sender<IpAddr>,
+    local_ip: IpAddr,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = [0u8; 4096];
 
@@ -141,6 +144,10 @@ pub async fn receive_task(
         tokio::select! {
             recv = socket.recv_from(&mut buf) => {
                 if let Ok((size, addr)) = recv {
+                    // Ignore packets from self to prevent echo
+                    if addr.ip() == local_ip {
+                        continue;
+                    }
                     if let Some(packet) = AudioPacket::deserialize(&buf[..size]) {
                         if packet.seq == 0 {
                             let _ = tx_ws.send("pinging".to_string());

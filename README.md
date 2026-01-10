@@ -20,6 +20,7 @@ This project implements a basic Voice over IP (VoIP) system using Rust for the b
 - Rust (latest stable)
 - Microphone and speakers/headphones
 - Two computers on the same network (or with direct IP connectivity)
+- **Important**: Use headphones to prevent audio feedback/echo. The application will warn if input and output devices are the same.
 
 ## Running the Application
 
@@ -51,6 +52,7 @@ This project implements a basic Voice over IP (VoIP) system using Rust for the b
 - No NAT traversal (requires direct IP connectivity)
 - Basic jitter buffer (may have latency issues on poor networks)
 - No security (no encryption)
+- No echo cancellation (use headphones to prevent feedback)
 
 ## Ports Used
 

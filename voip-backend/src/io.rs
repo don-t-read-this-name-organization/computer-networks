@@ -28,8 +28,19 @@ impl AudioState {
         output_jitter: Arc<Mutex<JitterBuffer>>,
     ) {
         let output_device = self.host.default_output_device().expect("No output device");
-        self.output = output_stream_fn(output_device, output_jitter).unwrap_or(None);
-        if let Some(input_device) = self.host.default_input_device() {
+        let input_device = self.host.default_input_device();
+
+        // Check if input and output devices are the same to prevent echo
+        if let Some(ref input_dev) = input_device {
+            if let (Ok(input_name), Ok(output_name)) = (input_dev.name(), output_device.name()) {
+                if input_name == output_name {
+                    eprintln!("Warning: Input and output devices are the same. This may cause audio feedback. Consider using headphones or separate devices.");
+                }
+            }
+        }
+
+        self.output = output_stream_fn(output_device, output_jitter.clone()).unwrap_or(None);
+        if let Some(input_device) = input_device {
             self.input = input_stream_fn(input_device, input_channel).unwrap_or(None);
         } else {
             self.input = None;
