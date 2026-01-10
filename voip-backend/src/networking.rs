@@ -37,6 +37,7 @@ pub async fn udp_task(
     let mut caller_ip: Option<IpAddr> = None;
 
     let (tx_caller, mut rx_caller) = mpsc::channel::<IpAddr>(1);
+    let (tx_internal, mut rx_internal) = mpsc::channel::<()>(1);
 
     {
         let socket_recv = socket.clone();
@@ -50,6 +51,7 @@ pub async fn udp_task(
                 CancellationToken::new(),
                 tx_ws.clone(),
                 tx_caller_recv,
+                tx_internal.clone(),
             )
             .await;
         });
@@ -59,6 +61,16 @@ pub async fn udp_task(
         tokio::select! {
             Some(ip) = rx_caller.recv() => {
                 caller_ip = Some(ip);
+            }
+
+            Some(_) = rx_internal.recv() => {
+                caller_ip = None;
+
+                if let Some(call) = call_handler.take() {
+                    call.cancel_token.cancel();
+                    let _ = call.send_handle.await;
+                    audio_state.lock().unwrap().clear();
+                }
             }
 
             msg = control_channel.recv() => {
@@ -98,6 +110,11 @@ pub async fn udp_task(
                                 .start(audio_channel.clone(), jitter.clone());
                         }
                     } else if msg.contains("end_call") {
+                        if let Some(ip) = caller_ip {
+                            let addr = SocketAddr::new(ip, 40000);
+                            let packet = AudioPacket { seq: u16::MAX, samples: vec![] };
+                            let _ = socket.send_to(&packet.serialize(), addr).await;
+                        }
                         caller_ip = None;
 
                         if let Some(call) = call_handler.take() {
@@ -144,6 +161,7 @@ pub async fn receive_task(
     cancel_token: CancellationToken,
     tx_ws: BroadcastSender<String>,
     tx_caller: mpsc::Sender<IpAddr>,
+    tx_internal: mpsc::Sender<()>,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = [0u8; 4096];
 
@@ -155,6 +173,9 @@ pub async fn receive_task(
                         if packet.seq == 0 {
                             let _ = tx_ws.send("pinging".to_string());
                             let _ = tx_caller.send(addr.ip()).await;
+                        } else if packet.seq == u16::MAX {
+                            let _ = tx_ws.send("call_ended".to_string());
+                            let _ = tx_internal.send(()).await;
                         } else {
                             jitter.lock().unwrap().push_packet(&packet.samples);
                         }

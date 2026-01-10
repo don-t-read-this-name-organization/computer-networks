@@ -57,6 +57,8 @@ class VoIPApp {
         console.log('Received:', message);
         if (message === 'pinging' && this.status !== 'Calling') {
             this.showIncomingCall();
+        } else if (message === 'call_ended') {
+            this.setStatus('Idle');
         }
         // Other messages can be handled here if needed
     }
