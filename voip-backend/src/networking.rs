@@ -19,6 +19,14 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{io::AudioState, jitter::JitterBuffer, packet::AudioPacket};
 
+fn calculate_rms(samples: &[i16]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = samples.iter().map(|&s| (s as f64).powi(2)).sum();
+    ((sum / samples.len() as f64).sqrt() / i16::MAX as f64) as f32
+}
+
 struct CallHandler {
     cancel_token: CancellationToken,
     send_handle: JoinHandle<()>,
@@ -38,6 +46,7 @@ pub async fn udp_task(
 
     let (tx_caller, mut rx_caller) = mpsc::channel::<IpAddr>(1);
     let (tx_internal, mut rx_internal) = mpsc::channel::<()>(1);
+    let tx_ws_clone = tx_ws.clone();
 
     {
         let socket_recv = socket.clone();
@@ -49,7 +58,7 @@ pub async fn udp_task(
                 socket_recv,
                 jitter_recv,
                 CancellationToken::new(),
-                tx_ws.clone(),
+                tx_ws_clone,
                 tx_caller_recv,
                 tx_internal.clone(),
             )
@@ -94,8 +103,9 @@ pub async fn udp_task(
                             let send_handle = {
                                 let token = cancel_token.clone();
                                 let socket_send = socket.clone();
+                                let tx_ws_send = tx_ws.clone();
                                 tokio::spawn(async move {
-                                    let _ = send_task(socket_send, audio_rx, token).await;
+                                    let _ = send_task(socket_send, audio_rx, token, tx_ws_send).await;
                                 })
                             };
 
@@ -133,6 +143,7 @@ pub async fn send_task(
     socket: Arc<UdpSocket>,
     mut audio_channel: BroadcastReceiver<Vec<u8>>,
     cancel_token: CancellationToken,
+    tx_ws: BroadcastSender<String>,
 ) -> Result<(), Box<dyn Error>> {
     let mut interval = interval(Duration::from_millis(50));
     let mut last_data = None;
@@ -140,12 +151,20 @@ pub async fn send_task(
     loop {
         tokio::select! {
             Ok(data) = audio_channel.recv() => {
+                if let Some(packet) = AudioPacket::deserialize(&data) {
+                    let rms = calculate_rms(&packet.samples);
+                    let _ = tx_ws.send(format!("volume local {}", rms));
+                }
                 last_data = Some(data.clone());
                 let _ = socket.send(&data).await;
                 interval.reset();
             }
             _ = interval.tick() => {
                 if let Some(data) = &last_data {
+                    if let Some(packet) = AudioPacket::deserialize(data) {
+                        let rms = calculate_rms(&packet.samples);
+                        let _ = tx_ws.send(format!("volume local {}", rms));
+                    }
                     let _ = socket.send(data).await;
                 }
             }
@@ -177,6 +196,8 @@ pub async fn receive_task(
                             let _ = tx_ws.send("call_ended".to_string());
                             let _ = tx_internal.send(()).await;
                         } else {
+                            let rms = calculate_rms(&packet.samples);
+                            let _ = tx_ws.send(format!("volume received {}", rms));
                             jitter.lock().unwrap().push_packet(&packet.samples);
                         }
                     }

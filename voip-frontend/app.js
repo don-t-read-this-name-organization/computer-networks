@@ -7,6 +7,11 @@ class VoIPApp {
         this.status = 'Idle'; // Idle, Calling, In Call
         this.targetIp = '';
 
+        this.audioContext = null;
+        this.analyser = null;
+        this.localVolume = 0;
+        this.receivedVolume = 0;
+
         // DOM elements
         this.statusEl = document.getElementById('status');
         this.targetIpEl = document.getElementById('targetIp');
@@ -15,6 +20,8 @@ class VoIPApp {
         this.incomingModal = document.getElementById('incomingModal');
         this.acceptBtn = document.getElementById('acceptBtn');
         this.rejectBtn = document.getElementById('rejectBtn');
+        this.localCanvas = document.getElementById('localCanvas');
+        this.receivedCanvas = document.getElementById('receivedCanvas');
 
         this.init();
     }
@@ -106,18 +113,31 @@ class VoIPApp {
         }
     }
 
-    checkMic() {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(() => {
-                    document.getElementById('micStatus').textContent = '🎤';
-                })
-                .catch(() => {
-                    document.getElementById('micStatus').textContent = '🔴🎤';
-                });
-        } else {
-            document.getElementById('micStatus').textContent = '🔴🎤';
-        }
+    setupAudioVisualizer(stream) {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 256;
+        const source = this.audioContext.createMediaStreamSource(stream);
+        source.connect(this.analyser);
+        this.drawLocal();
+    }
+
+    drawLocal() {
+        if (!this.analyser) return;
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        this.analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b) / bufferLength;
+        this.localVolume = avg / 255;
+        this.drawBar(this.localCanvas, this.localVolume);
+        requestAnimationFrame(() => this.drawLocal());
+    }
+
+    drawBar(canvas, volume) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#4CAF50';
+        ctx.fillRect(0, 0, canvas.width * volume, canvas.height);
     }
 
     setStatus(status) {
