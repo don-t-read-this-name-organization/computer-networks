@@ -33,7 +33,7 @@ pub async fn web_task(channel: Sender<(SocketAddr, String)>, tx_ws: BroadcastSen
         )
         .nest_service("/assets", ServeDir::new("assets"));
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("DEBUG: Before serve");
+    println!("Server running on http://localhost:3000");
     serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
