@@ -13,6 +13,7 @@ use tokio::{
         mpsc::Receiver as SingleReceiver,
     },
     task::JoinHandle,
+    time::{interval, Duration},
 };
 
 use tokio_util::sync::CancellationToken;
@@ -117,10 +118,20 @@ pub async fn send_task(
     mut audio_channel: BroadcastReceiver<Vec<u8>>,
     cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn Error>> {
+    let mut interval = interval(Duration::from_millis(50));
+    let mut last_data = None;
+
     loop {
         tokio::select! {
             Ok(data) = audio_channel.recv() => {
+                last_data = Some(data.clone());
                 let _ = socket.send(&data).await;
+                interval.reset();
+            }
+            _ = interval.tick() => {
+                if let Some(data) = &last_data {
+                    let _ = socket.send(data).await;
+                }
             }
             _ = cancel_token.cancelled() => break,
         }
