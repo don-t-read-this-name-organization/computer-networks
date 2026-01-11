@@ -50,3 +50,8 @@ The project uses several Rust crates:
 - `axum`: Web framework for the HTTP/WebSocket server
 - `tokio-tungstenite`: WebSocket support
 - `serde`: Serialization for control messages
+
+## Screenshots
+![](./screenshots/start.png)
+![](./screenshots/calling.png)
+![](./screenshots/in_call.png)
